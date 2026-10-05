@@ -436,7 +436,7 @@ This lab demonstrates how to use Splunk to capture and correlate Windows Event L
 
 ## References
 
-- MITRE ATT&CK framework
-- Windows Security Event Log reference
-- Splunk Universal Forwarder documentation
-- Splunk Search and Reporting reference
+- [MITRE ATT&CK Framework](https://attack.mitre.org/)
+- [Windows Security Event Log Reference (Microsoft Learn)](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/advanced-security-audit-policy-settings)
+- [Splunk Universal Forwarder Documentation](https://docs.splunk.com/Documentation/Forwarder/latest/Forwarder/Abouttheuniversalforwarder)
+- [Splunk Search Tutorial & Reference](https://docs.splunk.com/Documentation/Splunk/latest/SearchTutorial/WelcometotheSearchTutorial)
