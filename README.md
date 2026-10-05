@@ -39,22 +39,22 @@ This lab project demonstrates how to use Splunk to monitor and detect advanced t
 ┌─────────────────────────────────────────────────────────────┐
 │                    Lab Environment                          │
 ├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────────────┐          ┌────────────────────┐  │
-│  │  Windows 11 VM       │          │    Linux Host      │  │
-│  │  ─────────────────   │          │  ───────────────── │  │
-│  │  • WinEventLog       │          │  • Splunk Enterprise│  │
-│  │  • Event IDs: 4720,  │  TCP/9997│  • Forwarder Listen│  │
-│  │    4732, 4726, etc.  │  network │  • Python HTTP Srv │  │
-│  │  • Universal         ├──────────┤  • Port 8080 (Web) │  │
-│  │    Forwarder Enabled │          │  • Port 9997 (Data)│  │
-│  │                      │          │                    │  │
-│  └──────────────────────┘          └────────────────────┘  │
+│                                                             │
+│  ┌──────────────────────┐          ┌────────────────────┐   │
+│  │  Windows 11 VM       │          │    Linux Host      │   │
+│  │  ─────────────────   │          │  ───────────────── │   │
+│  │  • WinEventLog       │          │ • Splunk Enterprise│   │
+│  │  • Event IDs: 4720,  │  TCP/9997│ • Forwarder Listen │   │
+│  │    4732, 4726, etc.  │  network │ • Python HTTP Srv  │   │
+│  │  • Universal         ├──────────┤ • Port 8080 (Web)  │   │
+│  │    Forwarder Enabled │          │ • Port 9997 (Data) │   │
+│  │                      │          │                    │   │
+│  └──────────────────────┘          └────────────────────┘   │
 │           │                                   ▲             │
 │           │ WinEventLog (System, Security)    │             │
 │           │ Simulated Attacks & Scenarios     │             │
 │           └───────────────────────────────────┘             │
-│                                                              │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
