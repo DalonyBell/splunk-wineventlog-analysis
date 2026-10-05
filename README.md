@@ -154,7 +154,7 @@ Example execution on the Windows endpoint:
 powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ASABvAHMAdAAgACIASABlAGwAbABvACAAUwBwAGwAdQBuAGsAIQAiAA==
 ```
 
-![Endpoint Execution](images/Win11VM_PowershellCommands.png)
+![Endpoint Execution Output](images/HelloSplunk.png)
 
 Splunk detection example:
 
@@ -163,8 +163,6 @@ sourcetype=WinEventLog:Security EventCode=5156
 | search dest_port=8080 dest_ip="<linux-ip>"
 | stats count by user, dest_ip, dest_port, action
 ```
-
-![Splunk Process Creation Detection](images/WinEvenLog_Splunk.png)
 
 This technique demonstrates how an attacker can use a temporary Python HTTP server to serve an encoded payload and bypass clipboard/network isolation controls in a lab scenario.
 
@@ -380,6 +378,8 @@ Restart-Service SplunkForwarder
 2. Search for Windows event data
 3. Confirm data source appears in the index
 
+![Splunk Event Ingestion Verification](images/WinEvenLog_Splunk.png)
+
 ---
 
 ## Operational Notes
@@ -421,6 +421,8 @@ Diagnostic command:
 ```cmd
 C:\Program Files\SplunkUniversalForwarder\bin\splunk show config inputs
 ```
+
+![btool Diagnostic Output](images/Win11VM_PowershellCommands.png)
 
 The fix was to recreate the config file with strict UTF-8 encoding and no BOM. This restored the forwarder's ability to ingest Windows event logs properly.
 
