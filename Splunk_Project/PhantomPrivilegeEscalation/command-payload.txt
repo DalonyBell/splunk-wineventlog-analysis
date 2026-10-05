@@ -1,3 +1,0 @@
-net user Service_Backup P@ssw0rd123! /add
-net localgroup administrators Service_Backup /add
-net user Service_Backup /delete
